@@ -1,0 +1,39 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "func_send",
+            "description": "发送消息",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "消息内容，如果想发送多条消息，就用换行符隔开"
+                    }
+                },
+                "required": ["content"],
+                "additionalProperties": false
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "func_wait",
+            "description": "等待一段时间",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "n": {
+                        "type": "number",
+                        "enum": [-1, 5, 10, 20],
+                        "description": "等待时间，单位为秒，如果n=-1，则表示等待对方发消息"
+                    }
+                },
+                "required": ["n"],
+                "additionalProperties": false
+            }
+        }
+    }
+]

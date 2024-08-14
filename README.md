@@ -5,3 +5,7 @@ Employ a chatbot on WeChat
 这些商品好像只要陪人聊天就行了，听起来不难。
 我想借此机会创建这样一个repository，使用openai api最大程度模拟人类聊天，能完成图灵测试的那种。
 
+项目分成如下板块：
+1. request：负责向openai发送请求
+2. message manager：负责管理聊天记录，生成合适的prompt
+3. wechat api：负责与微信交互
