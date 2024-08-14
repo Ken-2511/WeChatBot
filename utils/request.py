@@ -1,7 +1,7 @@
 import os
 import json
-import time
-from ai_tools import *
+from phone_control import *
+from message_control import *
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessage
 
@@ -15,11 +15,11 @@ class ChatGPT:
         self.model = model
         # 注意这个`self.message`是一个列表，存放了对话记录，但没有包含系统提示
         self.messages = []
-        self.intro_message = self._get_into_message()
+        self.intro_message = self._get_intro_message()
         self.tools_message = self._get_tool_message()
 
     @staticmethod
-    def _get_into_message():
+    def _get_intro_message():
         with open("prompts/intro.txt", "r", encoding="utf-8") as f:
             return {
                 "role": "system",
@@ -50,6 +50,8 @@ class ChatGPT:
             self.messages.append(message)
 
     def get_message(self):
+        self.intro_message = self._get_intro_message()
+        self.tools_message = self._get_tool_message()
         messages = [self.intro_message]
         messages.extend(self.messages)
         return messages
