@@ -1,3 +1,7 @@
 openai
 opencv-python
 numpy
+Pillow
+requests
+pytesseract
+pydantic

@@ -5,6 +5,8 @@ from message_control import *
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessage
 
+file_dir = os.path.dirname(__file__)
+
 
 class ChatGPT:
     """
@@ -20,7 +22,8 @@ class ChatGPT:
 
     @staticmethod
     def _get_intro_message():
-        with open("prompts/intro.txt", "r", encoding="utf-8") as f:
+        # with open("prompts/intro.txt", "r", encoding="utf-8") as f:
+        with open(os.path.join(file_dir, "prompts/intro.txt"), "r", encoding="utf-8") as f:
             return {
                 "role": "system",
                 "content": f.read()
@@ -28,7 +31,8 @@ class ChatGPT:
 
     @staticmethod
     def _get_tool_message():
-        with open("prompts/tools.json", "r", encoding="utf-8") as f:
+        # with open("prompts/tools.json", "r", encoding="utf-8") as f:
+        with open(os.path.join(file_dir, "prompts/tools.json"), "r", encoding="utf-8") as f:
             return json.load(f)
 
     def request(self):

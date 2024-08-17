@@ -8,4 +8,15 @@ Employ a chatbot on WeChat
 项目分成如下板块：
 1. request：负责向openai发送请求
 2. message manager：负责管理聊天记录，生成合适的prompt
-3. wechat api：负责与微信交互
+3. screen_control：负责与手机微信交互
+
+在data文件夹里保存各个聊天记录的文件夹。
+
+data
+	chat_id
+		screenshots
+			imgs
+		messages
+			imgs
+			json
+		long_screen_shot
