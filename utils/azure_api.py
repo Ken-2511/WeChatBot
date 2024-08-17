@@ -4,7 +4,7 @@ import io
 import json
 
 # 设置 API Key 和 Endpoint
-subscription_key = "374f4e67efe4414dbbc0d1d22c0ff4a9"  # 替换为你的 Azure Subscription Key
+subscription_key = ""
 endpoint = "https://wechatbotocr.cognitiveservices.azure.com/"  # 替换为你的 Azure Endpoint
 
 # 设置 OCR API 的 URL
