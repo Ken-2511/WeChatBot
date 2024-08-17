@@ -3,10 +3,9 @@ import os
 import cv2
 import time
 import base64
-from AI import AI
+from utils.AI import AI
 import numpy as np
 import subprocess as sp
-from message_control import *
 
 __all__ = ["func_send", "func_wait", "send_message"]
 
@@ -72,10 +71,12 @@ def _swipe(x1, y1, x2, y2, duration, wait=1000):
     time.sleep(wait / 1000)
 
 
-def _get_screen():
+def get_screen():
     # show the screen using adb
     sp.run("adb shell screencap -p /sdcard/screen.png", shell=True)
     sp.run(f"adb pull /sdcard/screen.png {img_dir}", shell=True)
+    img = cv2.imread(img_path_map["screen"], cv2.IMREAD_COLOR)
+    return img
 
 
 def _input_text(text):
@@ -89,7 +90,7 @@ def __tap_img(img_key, wait=1000):
     # read the image and get the newest screen
     img_path = img_path_map[img_key]
     target_img = cv2.imread(img_path)
-    _get_screen()
+    get_screen()
     screen_img = cv2.imread(os.path.join(img_dir, "screen.png"))
     # find the target image in the screen image
     res = cv2.matchTemplate(screen_img, target_img, cv2.TM_CCOEFF_NORMED)
@@ -120,7 +121,7 @@ def check_page(take_screenshot=False):
     # check if the screen matches any of the predefined pages
     # if matched, return the one; if not, return None
     if take_screenshot:
-        _get_screen()
+        get_screen()
     screen_img = cv2.imread(img_path_map["screen"], cv2.IMREAD_COLOR)
     for key, page in all_pages.items():
         target_img = cv2.imread(page["target"], cv2.IMREAD_COLOR)
@@ -224,7 +225,7 @@ def _get_img_rela_pos(upper_img, lower_img, reserve_height=500, gap=10):
             _diff = diff
     if _diff > 15:
         print(f"Warning: The difference is {_diff}")
-    return _dh
+    return _dh, _diff
 
 
 def long_screenshot(count_limit=15, start_from=0):
@@ -232,10 +233,12 @@ def long_screenshot(count_limit=15, start_from=0):
     UP_BOUND = 230
     DOWN_BOUND = 2130
     count = start_from
-    current_height = DOWN_BOUND - UP_BOUND
-    sp.run("adb shell screencap -p /sdcard/screen.png", shell=True)
-    sp.run(f"adb pull /sdcard/screen.png {os.path.join(img_dir, 'long_screen', f"{count}.png")}", shell=True)
+    if count == 0:
+        # 如果从0开始的话，就需要先截取一张屏幕，如果不是从0开始，默认刚刚已经截过图了
+        sp.run("adb shell screencap -p /sdcard/screen.png", shell=True)
+        sp.run(f"adb pull /sdcard/screen.png {os.path.join(img_dir, 'long_screen', f"{count}.png")}", shell=True)
     count += 1
+    current_height = DOWN_BOUND - UP_BOUND
     while count < count_limit:
         _swipe(540, 600, 540, 1780, 1000)
         sp.run("adb shell screencap -p /sdcard/screen.png", shell=True)
@@ -243,7 +246,7 @@ def long_screenshot(count_limit=15, start_from=0):
         # calculate the relative difference
         upper_img = cv2.imread(os.path.join(img_dir, "long_screen", f"{count}.png"), cv2.IMREAD_COLOR)[UP_BOUND:DOWN_BOUND]
         lower_img = cv2.imread(os.path.join(img_dir, "long_screen", f"{count - 1}.png"), cv2.IMREAD_COLOR)[UP_BOUND:DOWN_BOUND]
-        dh = _get_img_rela_pos(upper_img, lower_img)
+        dh, diff = _get_img_rela_pos(upper_img, lower_img)
         # dhs.append(dh)
         print(f"dh: {dh}")
         if dh == 0:
@@ -255,7 +258,7 @@ def long_screenshot(count_limit=15, start_from=0):
     img0 = cv2.imread(os.path.join(img_dir, "long_screen", f"{0}.png"), cv2.IMREAD_COLOR)[UP_BOUND:DOWN_BOUND]
     for i in range(1, count):
         img1 = cv2.imread(os.path.join(img_dir, "long_screen", f"{i}.png"), cv2.IMREAD_COLOR)[UP_BOUND:DOWN_BOUND]
-        dhs.append(_get_img_rela_pos(img1, img0))
+        dhs.append(_get_img_rela_pos(img1, img0)[0])
         img0 = img1
     total_height = sum(dhs) + DOWN_BOUND - UP_BOUND
     total_img = np.zeros((total_height, 1080, 3), dtype=np.uint8)
@@ -265,21 +268,30 @@ def long_screenshot(count_limit=15, start_from=0):
     cv2.imwrite(os.path.join(img_dir, "long_screen.png"), total_img)
 
 
-def split_chat_img(long_img, my_icon, other_icon):
+def split_chat_img(long_img, my_icon, other_icon, target_dir=None):
     # split the long image into several chat images by detecting the icon
-    # each chat image should only contain one message
+    # each chat image should only contain one message. It is either me, or other, or system
     # return the list of chat images
+
     ICON_SIZE = 108
     MY_X = 940
     OTHER_X = 32
     MESSAGE_X1 = 169
     MESSAGE_X2 = 910
     THRESH = 0.85
+    SYS_MSG_H = 153
     assert my_icon.shape == other_icon.shape == (ICON_SIZE, ICON_SIZE, 3)
     assert long_img.shape[1] == 1080
-    chats = []
     h, w, _ = long_img.shape
-    # use matchTemplate to find the positions of the icons for myself
+
+    # make dir
+    if target_dir is None:
+        ci_dir = os.path.join(img_dir, "chat_images")
+    else:
+        ci_dir = target_dir
+    os.makedirs(ci_dir, exist_ok=True)
+
+    # get the positions of the icons for me
     my_icon_pos = []
     temp_img = long_img[:, MY_X:MY_X + ICON_SIZE]
     res = cv2.matchTemplate(temp_img, my_icon, cv2.TM_CCOEFF_NORMED).reshape(-1)
@@ -288,7 +300,8 @@ def split_chat_img(long_img, my_icon, other_icon):
             b0, b1 = max(0, i - 5), min(len(res), i + 5)
             idx = b0 + np.argmax(res[b0:b1]).item()
             my_icon_pos.append(idx)
-    # use matchTemplate to find the positions of the icons for the other
+
+    # get the positions of the icons for other
     other_icon_pos = []
     temp_img = long_img[:, OTHER_X:OTHER_X + ICON_SIZE]
     res = cv2.matchTemplate(temp_img, other_icon, cv2.TM_CCOEFF_NORMED).reshape(-1)
@@ -300,21 +313,58 @@ def split_chat_img(long_img, my_icon, other_icon):
             other_icon_pos.append(idx)
             i = idx + ICON_SIZE
         i += 1
-    # split the chat images
-    ci_dir = os.path.join(img_dir, "chat_images")
-    os.makedirs(ci_dir, exist_ok=True)
-    icon_pos = sorted(my_icon_pos + other_icon_pos)
-    long_img = long_img[:, MESSAGE_X1:MESSAGE_X2]
+
+    # check each message to see if system message attached
+    sys_pos = []
+    icon_pos = sorted(my_icon_pos + other_icon_pos) + [h]
     time_img = cv2.imread(os.path.join(img_dir, "time_img.png"), cv2.IMREAD_COLOR)
-    assert time_img.shape == (153, 741, 3), time_img.shape
+    assert time_img.shape == (SYS_MSG_H, 741, 3), time_img.shape
     for i in range(len(icon_pos) - 1):
+        assert icon_pos[i] < icon_pos[i + 1] - 32
         chat_img = long_img[icon_pos[i]:icon_pos[i + 1] - 32]
-        if (chat_img.shape[0] > 153 and
-                _check_difference(chat_img[chat_img.shape[0] - 153:], time_img, threshold=0.08, check_shape=False)):
-            chat_img = chat_img[:chat_img.shape[0] - 153]
+        _h = chat_img.shape[0]
+        if chat_img.shape[0] > SYS_MSG_H:
+            chat_img = chat_img[chat_img.shape[0] - SYS_MSG_H:, MESSAGE_X1:MESSAGE_X2]
+            if _check_difference(chat_img, time_img, threshold=0.1, check_shape=False):
+                sys_pos.append(icon_pos[i] + _h - SYS_MSG_H)
+
+    # split the chat images and save them to the `chat_image_dir`,
+    # and return the chat images, and the list of msg data
+    assert len(set(my_icon_pos + other_icon_pos + sys_pos)) == len(my_icon_pos + other_icon_pos + sys_pos)
+    chats = []
+    msg_data = []
+    icon_pos = sorted(my_icon_pos + other_icon_pos + sys_pos) + [h]
+    long_img = long_img[:, MESSAGE_X1:MESSAGE_X2]
+    for i in range(len(icon_pos) - 1):
+        chat_img = long_img[icon_pos[i]:icon_pos[i + 1]]
+        if icon_pos[i+1] not in sys_pos:
+            chat_img = chat_img[:chat_img.shape[0] - 32]
         cv2.imwrite(os.path.join(ci_dir, f"{i}.png"), chat_img)
         chats.append(chat_img)
-    return chats
+        _pos = icon_pos[i]
+        author = "me" if _pos in my_icon_pos else "other" if _pos in other_icon_pos else "system"
+        msg_data.append({
+            "author": author,
+            "f_name": f"{i}.png",
+        })
+    return chats, msg_data
+
+
+def catch_up_chat(catch_img, count_limit=15):
+    # 通过截屏的方式和之前的聊天记录衔接起来
+    # catch_img是有记录的最后一页截图，我们往上滚动截图，直到找到和之前的记录重叠的部分
+    for i in range(1, count_limit):
+        long_screenshot(i, i-1)
+        long_img = cv2.imread(os.path.join(img_dir, "long_screen.png"), cv2.IMREAD_COLOR)
+        dh, diff = _get_img_rela_pos(catch_img, long_img)
+        dh = min(catch_img.shape[0], long_img.shape[0]) - dh
+        if diff < 15:
+            long_img = long_img[dh:]
+            break
+    else:
+        long_img = cv2.imread(os.path.join(img_dir, "long_screen.png"), cv2.IMREAD_COLOR)
+    cv2.imwrite(os.path.join(img_dir, "long_screen.png"), long_img)
+    return
 
 
 def get_chat_name(img):
@@ -339,7 +389,7 @@ if __name__ == '__main__':
     # my_icon = cv2.resize(my_icon, (108, 108))
     # other_icon = cv2.resize(other_icon, (108, 108))
     # split_chat_img(long_img, my_icon, other_icon)
-    # _get_screen()
+    # get_screen()
     # get_chat_name(cv2.imread(os.path.join(img_dir, "screen.png"), cv2.IMREAD_COLOR))
     # import pytesseract
     # from PIL import Image
@@ -364,6 +414,11 @@ if __name__ == '__main__':
     # t0 = time.time()
     # print(_get_img_rela_pos(img1, img0))
     # print(time.time() - t0)
-    long_screenshot(3)
-    long_screenshot(5, 2)
+    # long_screenshot(3)
+    # long_screenshot(5, 2)
+    UP_BOUND = 230
+    DOWN_BOUND = 2130
+    img = cv2.imread(os.path.join(img_dir, "screen.png"), cv2.IMREAD_COLOR)[UP_BOUND:DOWN_BOUND]
+    cv2.imwrite(os.path.join(img_dir, "catch_img.png"), img)
+    catch_up_chat(img)
     pass
