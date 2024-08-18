@@ -1,9 +1,7 @@
 import os
 import cv2
 import base64
-from .AI import AI
-import numpy as np
-from enum import Enum
+from utils.AI import AI
 from typing import Literal
 
 platform = "windows"
