@@ -1,13 +1,17 @@
+# 这是主程序，长期运行，负责一直监控微信然后做出对应的对话
+
 import os
 import cv2
+import time
 import shutil
 from utils import phone_control as pc
 from utils import message_control as mc
 from utils import AI
-from utils.phone_control import split_chat_img
 
 file_dir = os.path.dirname(__file__)
 utils_dir = os.path.join(file_dir, "utils")
+# 一些常用配置
+LOOP_INTERVAL = 1  # 循环间隔，单位秒
 
 
 def initialize_chat() -> mc.Chat:
@@ -15,7 +19,7 @@ def initialize_chat() -> mc.Chat:
     img = pc.get_screen()
     other_name = pc.get_chat_name(img)
     chat = mc.Chat(other_name)
-    pc.long_screenshot(10)
+    pc.long_screenshot(100)
     long_img = cv2.imread(os.path.join(utils_dir, "images", "long_screen.png"), cv2.IMREAD_COLOR)
     img, data = pc.split_chat_img(long_img, chat.my_icon, chat.other_icon, target_dir=chat.msg_img_dir)
     print(data)
@@ -33,10 +37,17 @@ def add_message(chat: mc.Chat, img, author):
     pass
 
 
+def main_loop():
+    while True:
+        screen_img = pc.get_screen()
+        if pc.check_page(False) != "chats_page":
+            pc.start_wechat()
+        time.sleep(LOOP_INTERVAL)
+
+
 def test():
     initialize_chat()
 
 
 if __name__ == '__main__':
-    test()
-    # __remove_chat("Yongkang CE")
+    initialize_chat()
