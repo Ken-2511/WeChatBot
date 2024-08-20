@@ -27,7 +27,6 @@ params = {
 
 # 发送请求到 Azure OCR API
 response = requests.post(ocr_url, headers=headers, data=image_data, params=params)
-
 # 检查响应状态
 if response.status_code == 200:
     result = response.json()
