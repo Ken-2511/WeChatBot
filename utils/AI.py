@@ -157,3 +157,7 @@ class AI:
                 continue
             ans = ans[:i] + ans[i+1:]
         return ans
+
+
+if __name__ == '__main__':
+    pass
