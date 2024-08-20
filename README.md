@@ -7,16 +7,8 @@ Employ a chatbot on WeChat
 
 项目分成如下板块：
 1. request：负责向openai发送请求
-2. message manager：负责管理聊天记录，生成合适的prompt
-3. screen_control：负责与手机微信交互
-
-在data文件夹里保存各个聊天记录的文件夹。
-
-data
-	chat_id
-		screenshots
-			imgs
-		messages
-			imgs
-			json
-		long_screen_shot
+2. message_control：负责管理聊天记录，生成合适的prompt
+3. phone_control：负责与手机微信交互
+4. AI：负责识别聊天消息的截图之类的。
+5. message_classifier：因为我发现用传统opencv的方式无法保证能合理地分类消息类型，所以我决定训练一个神经网络来对消息进行分类
+6. main：主程序
