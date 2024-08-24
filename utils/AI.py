@@ -8,6 +8,7 @@ from PIL import Image
 from openai import OpenAI
 from typing import Literal
 from pydantic import BaseModel, constr
+from utils.message_classifier import MessageClassifier
 
 platform = "windows"
 file_dir = os.path.dirname(__file__)
@@ -36,29 +37,11 @@ class AI:
     else:
         raise NotImplementedError
     client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+    message_classifier = MessageClassifier(pretrained=True)
 
     @staticmethod
     def detect_mode(image: np.ndarray):
-        # 测试是否是文字
-        # 如果是文字的话最好要识别出来
-        # 但如果不是文字的话一定要说不是文字
-        result = pytesseract.image_to_data(Image.fromarray(image), output_type=pytesseract.Output.DICT,
-                                           config=AI.config, lang="chi_sim")
-        if "conf" not in result:
-            return "unknown"
-        avg_conf = 0
-        count = 0
-        for conf in result["conf"]:
-            if conf == -1:
-                continue
-            avg_conf += conf
-            count += 1
-        if count == 0:
-            return "unknown"
-        avg_conf /= count
-        if avg_conf > 85:
-            return "text"
-        return "unknown"
+        return AI.message_classifier.predict_numpy(image)
 
     @staticmethod
     def detect_unknown(image: np.ndarray):
@@ -124,7 +107,12 @@ class AI:
 
     @staticmethod
     def describe_image(image: np.ndarray):
-        return pytesseract.image_to_data(Image.fromarray(image), output_type=pytesseract.Output.DICT)
+        # TODO: describe the image
+        return "image"
+
+    @staticmethod
+    def get_file_name(image: np.ndarray):
+        return AI.get_text_from_msg_image(image)
 
     @staticmethod
     def __is_chinese(char):
@@ -157,6 +145,11 @@ class AI:
                 continue
             ans = ans[:i] + ans[i+1:]
         return ans
+
+    @ staticmethod
+    def describe_sticker(image: np.ndarray):
+        # TODO: describe the sticker
+        return "sticker"
 
 
 if __name__ == '__main__':
