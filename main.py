@@ -19,10 +19,9 @@ def initialize_chat() -> mc.Chat:
     img = pc.get_screen()
     other_name = pc.get_chat_name(img)
     chat = mc.Chat(other_name)
-    pc.long_screenshot(100)
+    pc.long_screenshot(10)
     long_img = cv2.imread(os.path.join(utils_dir, "images", "long_screen.png"), cv2.IMREAD_COLOR)
-    img, data = pc.split_chat_img(long_img, chat.my_icon, chat.other_icon, target_dir=chat.msg_img_dir)
-    print(data)
+    pc.split_chat_img(long_img, target_dir=chat.msg_img_dir)
     return chat
 
 
