@@ -1,13 +1,11 @@
 # 这个里面定义了一些AI相关的工具函数
 import os
-from tkinter import image_names
-
 import cv2
 import time
 import base64
-from utils.AI import AI
 import numpy as np
 import subprocess as sp
+from utils.AI import AI
 
 __all__ = ["func_send", "func_wait"]
 
@@ -95,6 +93,15 @@ name2enc = {
 enc2name = {v: k for k, v in name2enc.items()}
 
 
+# 我们常用的操作和key_code的映射
+key_code_map = {
+    "back": "KEYCODE_BACK",
+    "home": "KEYCODE_HOME",
+    "menu": "KEYCODE_MENU",
+    "delete": "KEYCODE_DEL",
+}
+
+
 def _tap(x, y, wait=1000):
     # tap the screen using adb
     sp.run(f"adb shell input tap {x} {y}", shell=True)
@@ -115,6 +122,13 @@ def _swipe(x1, y1, x2, y2, duration, wait=1000):
     time.sleep(wait / 1000)
 
 
+def _key_event(event: str, wait=1000):
+    # send key event using adb
+    key_code = key_code_map.get(event, event)
+    sp.run(f"adb shell input keyevent {key_code}", shell=True)
+    time.sleep(wait / 1000)
+
+
 def get_screen():
     # show the screen using adb
     sp.run("adb shell screencap -p /sdcard/screen.png", shell=True)
@@ -127,6 +141,12 @@ def _input_text(text):
     # input text using adb
     text = str(base64.b64encode(text.encode("utf-8")))[1:]
     sp.run(f"adb shell am broadcast -a ADB_INPUT_B64 --es msg {text}", shell=True)
+
+
+def _set_layout_bounds(status: bool):
+    # set the layout bounds using adb
+    sp.run(f"adb shell setprop debug.layout {int(status)}", shell=True)
+    sp.run("adb shell service call activity 1599295570")
 
 
 def __tap_img(img_key, wait=1000):
@@ -214,8 +234,8 @@ def start_wechat():
     if current_page == "chats_page":
         return
     elif current_page == "chat_keybd_on":
-        _swipe(*gesture_pos["back"])
-        _swipe(*gesture_pos["back"])
+        _key_event("back", wait=200)
+        _key_event("back")
         start_wechat()
         return
     elif current_page == "chat_keybd_off":
@@ -223,17 +243,16 @@ def start_wechat():
         start_wechat()
         return
     # else——对应未知情况
-    _swipe(*gesture_pos["home"], wait=200)
-    _swipe(*gesture_pos["home"])
+    _key_event("home", wait=300)
+    _key_event("home")
     _tap(*btn_pos["wechat"])
     current_page = check_page(take_screenshot=True)
     for count in range(5):
         if current_page == "chats_page":
             return
         # clear the memory
-        _swipe(*gesture_pos["home"])
-        sp.run("adb shell input keyevent KEYCODE_MENU", shell=True)
-        time.sleep(1)
+        _key_event("home", wait=300)
+        _key_event("menu")
         _tap(*btn_pos["clear_memory"])
         _tap(*btn_pos["wechat"])
         time.sleep(count + 2)
@@ -286,13 +305,15 @@ def _get_img_rela_pos(upper_img, lower_img, reserve_height=500, gap=10):
     return _dh, _diff
 
 
-def long_screenshot(count_limit=15, start_from=0, take_screenshot=True, scroll_after=False):
+def long_screenshot(count_limit=15, start_from=0, take_screenshot=True, scroll_after=False, set_layout_bounds=True):
     # 通过滚动截图的方式获取长截图
     # 返回的时候界面应当停留在当前页，并且已截屏
     UP_BOUND = 230
     DOWN_BOUND = 2130
     count = start_from
     current_height = DOWN_BOUND - UP_BOUND
+    if set_layout_bounds:
+        _set_layout_bounds(True)
     if take_screenshot:
         sp.run("adb shell screencap -p /sdcard/screen.png", shell=True)
         sp.run(f"adb pull /sdcard/screen.png {os.path.join(img_dir, 'long_screen', f"{count}.png")}", shell=True)
@@ -327,20 +348,14 @@ def long_screenshot(count_limit=15, start_from=0, take_screenshot=True, scroll_a
         total_img[total_height - sum(dhs[:i]) - DOWN_BOUND + UP_BOUND:total_height - sum(dhs[:i]), :] = img
     cv2.imwrite(os.path.join(img_dir, "long_screen.png"), total_img)
 
+    if set_layout_bounds:
+        _set_layout_bounds(False)
 
-def split_chat_img(long_img, my_icon, other_icon, target_dir=None):
-    # split the long image into several chat images by detecting the icon
-    # each chat image should only contain one message. It is either me, or other, or system
-    # return the list of chat images
 
-    ICON_SIZE = 108
-    MY_X = 940
-    OTHER_X = 32
-    MESSAGE_X1 = 169
-    MESSAGE_X2 = 910
-    THRESH = 0.85
-    SYS_MSG_H = 153 - 32
-    assert my_icon.shape == other_icon.shape == (ICON_SIZE, ICON_SIZE, 3)
+def split_chat_img(long_img, target_dir=None):
+    # 更简洁的版本，通过开启开发者选项的layout bounds来分割聊天记录
+    # 仅仅分割聊天记录并将其保存在target_dir中，不做消息分类/分析
+    # 耗时：约0.1s
     assert long_img.shape[1] == 1080
     h, w, _ = long_img.shape
 
@@ -351,66 +366,24 @@ def split_chat_img(long_img, my_icon, other_icon, target_dir=None):
         ci_dir = target_dir
     os.makedirs(ci_dir, exist_ok=True)
 
-    # get the positions of the icons for me
-    my_icon_pos = []
-    temp_img = long_img[:, MY_X:MY_X + ICON_SIZE]
-    res = cv2.matchTemplate(temp_img, my_icon, cv2.TM_CCOEFF_NORMED).reshape(-1)
-    i = 0
-    while i < len(res):
-        if res[i] > THRESH:
-            b0, b1 = max(0, i - 10), min(len(res), i + 10)
-            idx = b0 + np.argmax(res[b0:b1]).item()
-            my_icon_pos.append(idx)
-            i = idx + ICON_SIZE
-        i += 1
-
-    # get the positions of the icons for other
-    other_icon_pos = []
-    temp_img = long_img[:, OTHER_X:OTHER_X + ICON_SIZE]
-    res = cv2.matchTemplate(temp_img, other_icon, cv2.TM_CCOEFF_NORMED).reshape(-1)
-    i = 0
-    while i < len(res):
-        if res[i] > THRESH:
-            b0, b1 = max(0, i - 10), min(len(res), i + 10)
-            idx = b0 + np.argmax(res[b0:b1]).item()
-            other_icon_pos.append(idx)
-            i = idx + ICON_SIZE
-        i += 1
-
-    # check each message to see if system message attached
-    sys_pos = []
-    icon_pos = sorted(my_icon_pos + other_icon_pos) + [h]
-    time_img = cv2.imread(os.path.join(img_dir, "time_img.png"), cv2.IMREAD_COLOR)
-    assert time_img.shape == (SYS_MSG_H, 741, 3), time_img.shape
-    for i in range(len(icon_pos) - 1):
-        assert icon_pos[i] < icon_pos[i + 1] - 32, f"{icon_pos[i]} {icon_pos[i + 1]}"
-        chat_img = long_img[icon_pos[i]:icon_pos[i + 1] - 32]
-        _h = chat_img.shape[0]
-        if chat_img.shape[0] > SYS_MSG_H:
-            chat_img = chat_img[chat_img.shape[0] - SYS_MSG_H:, MESSAGE_X1:MESSAGE_X2]
-            if _check_difference(chat_img, time_img, threshold=0.1, check_shape=False):
-                sys_pos.append(icon_pos[i] + _h - SYS_MSG_H)
-
-    # split the chat images and save them to the `chat_image_dir`,
-    # and return the chat images, and the list of msg data
-    assert len(set(my_icon_pos + other_icon_pos + sys_pos)) == len(my_icon_pos + other_icon_pos + sys_pos)
-    chats = []
-    msg_data = []
-    icon_pos = sorted(my_icon_pos + other_icon_pos + sys_pos) + [h]
-    long_img = long_img[:, MESSAGE_X1:MESSAGE_X2]
-    for i in range(len(icon_pos) - 1):
-        chat_img = long_img[icon_pos[i]:icon_pos[i + 1]]
-        # if icon_pos[i+1] not in sys_pos:
-        chat_img = chat_img[:chat_img.shape[0] - 32]
+    # 通过红线分割图片
+    pure_red_bgr = np.array([0, 0, 255], dtype=np.uint8)
+    temp_long_img = long_img[:, ::5, :]
+    mask = cv2.inRange(temp_long_img, pure_red_bgr, pure_red_bgr)
+    mask = (mask.mean(axis=1) > 255 * 0.8).reshape(-1).tolist()
+    # 通过mask来分割图片
+    y = 0
+    y_limit = len(mask)
+    breaks = []
+    while y < y_limit:
+        if mask[y]:
+            breaks.append(y)
+            y += 32  # 为了防止两条相隔太近的红线
+        y += 1
+    # 保存图片
+    for i in range(len(breaks) - 1):
+        chat_img = long_img[breaks[i]:breaks[i + 1]]
         cv2.imwrite(os.path.join(ci_dir, f"{i}.png"), chat_img)
-        chats.append(chat_img)
-        _pos = icon_pos[i]
-        author = "me" if _pos in my_icon_pos else "other" if _pos in other_icon_pos else "system"
-        msg_data.append({
-            "author": author,
-            "f_name": f"{i}.png",
-        })
-    return chats, msg_data
 
 
 def catch_up_chat(count_limit=15, take_screenshot=True):
@@ -563,6 +536,17 @@ if __name__ == '__main__':
     # start_wechat()
     # goto_chat("程永康Ken")
     # func_send("你好 你好", "程永康Ken")
-    _input_text("哦哦好的")
+    # _input_text("哦哦好的")
     # goto_chat("Yongkang CE")
     # print(get_chat_name(get_screen()))
+    # long_screenshot()
+
+    long_img = cv2.imread(os.path.join(img_dir, "long_screen.png"), cv2.IMREAD_COLOR)
+    my_icon = cv2.imread(r"C:\Users\IWMAI\Documents\WeChatBot\chats\WW9uZ2thbmcgQ0U=\my_icon.jpg", cv2.IMREAD_COLOR)
+    other_icon = cv2.imread(r"C:\Users\IWMAI\Documents\WeChatBot\chats\WW9uZ2thbmcgQ0U=\other_icon.jpg", cv2.IMREAD_COLOR)
+    my_icon = cv2.resize(my_icon, (108, 108), interpolation=cv2.INTER_AREA)
+    other_icon = cv2.resize(other_icon, (108, 108), interpolation=cv2.INTER_AREA)
+    target_dir = os.path.join(img_dir, "chat_images")
+    t0 = time.time()
+    split_chat_img(long_img, target_dir)
+    print(time.time() - t0)
